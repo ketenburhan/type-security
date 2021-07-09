@@ -11,12 +11,22 @@ const Type = {
 			value
 		};
 	},
-	interface(value) {
+	interface(value, rest_type) {
 		if (value && !value.TYPE_SECURITY_ARRAY_OF && !value.TYPE_SECURITY_NOT && !value.TYPE_SECURITY_INTERFACE) {
-			if (this.is_array(value) || this.is_object(value)) {
+			if (this.is_array(value)) {
 				return {
 					value,
-					TYPE_SECURITY_INTERFACE: true
+					TYPE_SECURITY_INTERFACE: true,
+					TYPE_SECURITY_INTERFACE_REST_TYPE: rest_type,
+				}
+			}
+			else if (this.is_object(value)) {
+				if (this.is_defined(rest_type)) {
+					console.warn("`rest_type` is only for arrays.");
+				}
+				return {
+					value,
+					TYPE_SECURITY_INTERFACE: true,
 				};
 			}
 			else {
@@ -84,6 +94,9 @@ const Type = {
 		else if (data_type === "empty") {
 			return this.is_empty(value);
 		}
+		else if (data_type === "error") {
+			return this.is_error(value);
+		}
 		else if (data_type.TYPE_SECURITY_NOT) {
 			return !this.check(value, data_type.value);
 		}
@@ -105,6 +118,16 @@ const Type = {
 				if (!this.check(value[i], type[i])) {
                     return false;
 				}
+			}
+			let rest_type = data_type.TYPE_SECURITY_INTERFACE_REST_TYPE;
+			if (this.is_defined(rest_type)) {
+				let rest = value.slice(type.length);
+				if (!this.check(rest, this.array_of(rest_type))) {
+					return false;
+				}
+			}
+			else if (this.is_array(type) && value.length > type.length) {
+				return false;
 			}
 			return true;
 		}
