@@ -1,170 +1,142 @@
-const Type = {
-	not(value) {
-		return {
-			TYPE_SECURITY_NOT: true,
-			value
-		};
-	},
-	array_of(value) {
-		return {
-			TYPE_SECURITY_ARRAY_OF: true,
-			value
-		};
-	},
-	interface(value, rest_type) {
-		if (value && !value.TYPE_SECURITY_ARRAY_OF && !value.TYPE_SECURITY_NOT && !value.TYPE_SECURITY_INTERFACE) {
-			if (this.is_array(value)) {
-				return {
-					value,
-					TYPE_SECURITY_INTERFACE: true,
-					TYPE_SECURITY_INTERFACE_REST_TYPE: rest_type,
-				}
-			}
-			else if (this.is_object(value)) {
-				if (this.is_defined(rest_type)) {
-					console.warn("`rest_type` is only for arrays.");
-				}
-				return {
-					value,
-					TYPE_SECURITY_INTERFACE: true,
-				};
-			}
-			else {
-				console.error(new TypeError("an `interface` prefix can only created from `Array` or `Object`"));
-			}
-		}
-        else {
-            console.error(new TypeError("it's impossible to create `interface` from `array_of` or `not` prefixed values."))
-        }
-	},
-	is_string(value) {
-		return typeof value === 'string' || value instanceof String;
-	},
-	is_number(value) {
-		return (typeof value === 'number' || value instanceof Number);
-	},
-	is_array(value) {
-		return value && Array.isArray(value);
-	},
-	is_function(value) {
-		return typeof value === 'function';
-	},
-	is_object(value) {
-		return typeof value === 'object' && value.constructor === Object;
-	},
-	is_null(value) {
-		return value === null;
-	},
-	is_nan(value) {
-		return isNaN(value);
-	},
-	is_empty(value) {
-		return value==="" || value===null || (Array.isArray(value) && value.length === 0) || value===undefined;
-	},
-	is_undefined(value) {
-		return typeof value === 'undefined';
-	},
-	is_defined(value) {
-		return typeof value !== 'undefined';
-	},
-	is_boolean(value) {
-		return typeof value === 'boolean';
-	},
-	is_regexp(value) {
-		return value instanceof RegExp;
-	},
-	is_error(value) {
-		return value instanceof Error && typeof value.message !== 'undefined';
-	},
-	is_date(value) {
-		return value instanceof Date;
-	},
-	is_symbol(value) {
-		return typeof value === 'symbol'
-	},
-	is_custom(value, data_type=true) {
-        // `true` means `is_defined` for type
-		if (data_type === true) {
-			return this.is_defined(value);
-		}
-        // `false` means `is_undefined` for type
-        else if (data_type === false) {
-            return this.is_undefined(value);
-        }
-		else if (data_type === "empty") {
-			return this.is_empty(value);
-		}
-		else if (data_type === "error") {
-			return this.is_error(value);
-		}
-		else if (data_type.TYPE_SECURITY_NOT) {
-			return !this.check(value, data_type.value);
-		}
-		else if (data_type.TYPE_SECURITY_ARRAY_OF) {
-			if (!this.is_array(value)) {
-				return false;
-			}
-
-			for (let v of value) {
-				if (!this.check(v, data_type.value)) {
-					return false;
-				}
-			}
-			return true;
-		}
-		else if (data_type.TYPE_SECURITY_INTERFACE) {
-			let type = data_type.value;
-			for (let i in type) {
-				if (!this.check(value[i], type[i])) {
-                    return false;
-				}
-			}
-			let rest_type = data_type.TYPE_SECURITY_INTERFACE_REST_TYPE;
-			if (this.is_defined(rest_type)) {
-				let rest = value.slice(type.length);
-				if (!this.check(rest, this.array_of(rest_type))) {
-					return false;
-				}
-			}
-			else if (this.is_array(type) && value.length > type.length) {
-				return false;
-			}
-			return true;
-		}
-		else {
-			return this.whatis(value) === data_type;
-		}
-	},
-	whatis(value) {
-		if (value === null) {
-			return "null";
-		}
-		else if (typeof value !== "object") {
-			return typeof value;
-		}
-		else if (typeof value === "object") {
-			return value.constructor;
-		}
-	},
-	check(value, type) {
-		if (type === "any") {
-			return true;
-		}
-		if (this.is_array(type)) {
-			for (let t of type) {
-				if (this.is_custom(value, t)) {
-					return true;
-				}
-			}
-			return false;
-		}
-		else if (this.is_custom(value, type)) {
-			return true;
-		}
-		return false;
-	},
-};
-
-module.exports = {
-    Type,
+class TypeIndicator {
+    check(value) {
+	return true;
+    }
 }
+class Not extends TypeIndicator {
+    constructor(type_instance) {
+	super();
+	this.type_instance = type_instance;
+    }
+    check(value) {
+	return !Type.check(value, this.type_instance);
+    }
+}
+class ArrayOf extends TypeIndicator {
+    constructor(type_instance) {
+	super();
+	this.type_instance = type_instance;
+    }
+    check(value) {
+	if (!value instanceof Array) {
+	    return false;
+	}
+	for (let v of value) {
+	    if (!Type.check(v, this.type_instance)) {
+		return false;
+	    }
+	}
+	return true;
+    }
+}
+class Interface extends TypeIndicator {
+    constructor(type_instance, rest_type) {
+	super();
+	this.type_instance = type_instance;
+	this.rest_type = rest_type;
+    }
+    check(value) {
+	let type = this.type_instance;
+	for (let i in type) {
+	    if (!Type.check(value[i], type[i])) {
+		return false;
+	    }
+	}
+	if (value instanceof Array && value.length > type.length) {
+	    if (this.rest_type === undefined) {
+		return false;
+	    }
+	    let rest = value.slice(type.length);
+	    if (!Type.check(rest, new ArrayOf(this.rest_type))) {
+		return false;
+	    }
+
+	}
+	return true;
+    }
+}
+class Either extends TypeIndicator {
+    constructor(...type_instances) {
+	super();
+	this.type_instances = type_instances;
+    }
+    check(value) {
+	let types = this.type_instances;
+	for (let t of types) {
+	    if (Type.check(value, t)) {
+		return true;
+	    }
+	}
+	return false;
+    }
+}
+class InstanceOf extends TypeIndicator {
+    constructor(type_instance) {
+	super();
+	this.type_instance = type_instance;
+    }
+    check(value) {
+	return value instanceof this.type_instance;
+    }
+}
+// type_instance: Type
+class Type {
+    static Any = Symbol("any")
+    static Empty = Symbol("empty");
+    static Defined = Symbol("defined");
+    static Undefined = Symbol("undefined");
+
+    
+    static not(type_instance) {
+	return new Not(type_instance);
+    }
+    static array_of(type_instance) {
+	return new ArrayOf(type_instance);
+    }
+    static interface(type_instance, rest_type) {
+	return new Interface(type_instance, rest_type);
+    }
+    static either(...type_instances) {
+	return new Either(...type_instances);
+    }
+    static instance_of(type_instance) {
+	return new InstanceOf(type_instance);
+    }
+
+    static whatis(value) {
+	switch (value) {
+	case null:
+	    return null;
+	    break;
+	case undefined:
+	    return undefined;
+	    break;
+	case NaN:
+	    return NaN;
+	    break;
+	}
+	return value.constructor;
+    }
+    
+    static check(value, type_instance) {
+	switch (type_instance) {
+	case Type.Any:
+	    return true;
+	case Type.Defined:
+	    return typeof value !== "undefined";
+	case Type.Undefined:
+	    return typeof value === "undefined";
+	case Type.Empty:
+	    return value === ""
+		|| value === null
+		|| (Array.isArray(value) && value.length === 0)
+		|| value === undefined;
+	}
+	if (type_instance instanceof TypeIndicator) {
+	    return type_instance.check(value);
+	}
+	return Type.whatis(value) === type_instance;
+    }
+}
+
+module.exports = Type
